@@ -1,0 +1,288 @@
+---------------------------------
+http://confiance.sourceforge.net/
+---------------------------------
+
+
+=====
+NOTES
+=====
+
+This is a brief guide to the compilation of the MSRP (Message
+Session Relay Protocol) library, according to draft specifications
+(attached), and of the test programs that has been made available
+to show its use. This library is currently being used in the
+Confiance conferencing framework (http://confiance.sourceforge.net/)
+to provide MSRP support.
+
+This guide has been conceived by installing the applications on
+a Linux RedHat Fedora Core 6, but it should not give any problem
+on different distributions.
+
+A Windows version of the library is still not available due
+to some non-portable methods being currently used (e.g. socketpair)
+but it soon will. If you make a Win32 version of the library by
+fixing the current issues, please let me know at
+
+	lorenzo.miniero@unina.it
+
+
+=====
+INDEX
+=====
+
+1. Compiling the library
+2. Testing the library as endpoint
+3. Testing the library as switch
+
+
+
+========================
+1. Compiling the library
+========================
+
+Edit the Makefile according to your settings and compiler.
+By default gcc will be used, and the library installed
+to /usr as destination prefix (/usr/include, /usr/lib).
+
+To compile the library, type:
+
+	make so
+
+This will build the shared object for the library.
+To install it, type, as root:
+
+	make install
+
+If you want to compile the test executables for the library,
+type:
+
+	make test
+
+This will build two executables:
+
+	- endpointmsrp, which will enable you to access the
+			MSRP functionality as an endpoint
+			(e.g. an IM client);
+	- switchmsrp,	which will enable you to create an
+			MSRP switch (i.e. a conference room).
+
+
+==================================
+2. Testing the library as endpoint
+==================================
+
+To test the endpoint functionality, launch the endpointmsrp
+executable. This test application will need a text file
+containing some basic configuration settings. A sample
+is in the conf subdirectory (conf/endpoint.conf):
+
+	- debug:	if you set debug to 1, you'll get
+			many notifications printed on screen,
+			both for log messages and errors.
+			By default it is 0.
+	- callid:	this is the Call-ID of the SIP session
+			the MSRP connection will be associated
+			with. Since this is an example, no
+			SIP/SDP negotiation happens, so we
+			pass it here.
+	- label:	this is the label associated with the
+			MSRP media stream in SDP, if needed.
+			As before, this is a fake value.
+	- active:	a 0 value means a passive endpoint (act
+			as MSRP server and wait for the connection
+			from the negotiated MSRP peer), while
+			a 1 value means an active endpoint (act
+			as a clint, and connect to the negotiated
+			peer). For a correct behaviour of the library,
+			the server should know both the peers
+			(i.e. itself, 'From', and the client, 'To')
+			before the client does, since the client
+			will connect as soon as msrp_endpoint_set_to
+			is called.
+	- address:	this is the address the MSRP library will
+			use to build the endpoint's MSRP path.
+	- port:		this is the port number the endpoint will
+			bind to. This is true for both servers and
+			clients, since they get negotiated via SDP.
+			if set to 0, a random port number will be
+			chosen by the library. Once the endpoint
+			binds to the port, this port is used to
+			build the endpoint's MSRP path.
+	- display:	the nickname to be used. This is only for
+			visualization purposes (i.e. it is local
+			to the application), since MSRP uses SIP
+			display identifiers as nicknames.
+
+A typical example to try the application is to have two endpoints
+talking to each other. Setup two different configuration files,
+one active and one passive, and then launch two instances of
+the application, e.g.:
+
+	./endpointmsrp alice.conf
+
+with alice.conf (server endpoint, active is 0):
+
+	debug=0
+	call_id=3413an89KU
+	label=11
+	active=0
+	address=127.0.0.1
+	port=0
+	display=Alice
+
+and:
+
+	./endpointmsrp bob.conf
+
+with alice.conf (client endpoint, active is 1):
+
+	debug=0
+	call_id=3413an89KU
+	label=22
+	active=1
+	address=127.0.0.1
+	port=8888
+	display=Bob
+
+The call-IDs in real world scenarios will typically be the same,
+since they will identify a SIP session. Since no actual SDP
+negotiation is involved, it will be simulated through console
+interaction. 
+Once the server starts, you'll see something like this:
+
+	Configuration file: alice.conf
+		Debug:          no
+		Call-ID:        3413an89KU
+		Label:          11
+		Active:         no
+		Address:        127.0.0.1
+		Port:           0
+		Display:        Alice
+		No 'port' in alice.conf, choosing random one
+	
+	MSRP library initialized.
+	New endpoint (ID 1) created:
+		Call-ID:        3413an89KU
+		Label:          11
+		From:           msrp://127.0.0.1:2832/1e4d2c216b02;tcp (passive)
+
+We wanted a random port, and 2832 has been taken. Besides, a
+random session identifier has been picked up (1e4d2c216b02).
+As a result, the 'From' string identifies Alice's MSRP path.
+
+On the client side:
+
+	Configuration file: bob.conf
+		Debug:          no
+		Call-ID:        3413an89KU
+		Label:          22
+		Active:         yes
+		Address:        127.0.0.1
+		Port:           8888
+		Display:        Bob
+	
+	MSRP library initialized.
+	New endpoint (ID 1) created:
+		Call-ID:        n89KU3413a
+		Label:          22
+		From:           msrp://127.0.0.1:8888/5ff8dd6225c1;tcp (active)
+
+We wanted for Bob to explicitely bind to 8888, and it has
+been done. A random session identifier has been picked up
+(5ff8dd6225c1), and as before the 'From' string identifies
+Bob's MSRP path.
+
+Now that both endpoints have a valid MSRP path, they'll need
+to exchange it with each other to start to communicate. This
+is typically done by means of a SIP/SDP offer/answer negotiation
+mechanism. Since it is only simulated here, take Bob's path
+(the client) and pass it to Alice:
+
+	Insert your peer's nickname (for visualization only): Bob
+	Insert the full 'To' path: msrp://127.0.0.1:8888/5ff8dd6225c1;tcp
+		To:             msrp://127.0.0.1:8888/5ff8dd6225c1;tcp (active)
+
+Setting the peer has made the server start listening on the port.
+Now take Alice's path (the server) and pass it to Bob:
+
+	Insert your peer's nickname (for visualization only): Alice
+	Insert the full 'To' path: msrp://127.0.0.1:2832/1e4d2c216b02;tcp
+	Endpoint 1: we connected towards 'To' (msrp://127.0.0.1:2832/1e4d2c216b02;tcp)
+		To:             msrp://127.0.0.1:2832/1e4d2c216b02;tcp (passive)
+
+As you can see, setting the peer made the client connect to it.
+In fact, in Alice's application you can see:
+
+	Endpoint 1: 'To' connected to us (msrp://127.0.0.1:8888/5ff8dd6225c1;tcp)
+
+At this point, the two MSRP endpoints are connected, and can start
+chatting. A disconnection of one of the peers will be notified to
+the other.
+
+Have a look at the code to see how all this can be accomplished
+using the MSRP library.
+
+
+================================
+3. Testing the library as switch
+================================
+
+The library can act as an MSRP switch as well. Switching means
+having a single listening MSRP path to which other active endpoints
+connect to: each message an endpoint will send will then be
+forwarded to all the other attached endpoints. This switch
+functionality implements an MSRP conference chat room.
+Announcements (both to a single endpoint or to all endpoints)
+can be made on a switch. Besides, moderation is envisaged: this is
+accomplished on the application side, to allow for example floor
+control to decide who can talk and who can't.
+
+To test the switching functionality, launch the switchmsrp
+executable. This test application will need a text file
+containing some basic configuration settings. A sample
+is in the conf subdirectory (conf/switch.conf):
+
+	- debug:	if you set debug to 1, you'll get
+			many notifications printed on screen,
+			both for log messages and errors.
+			By default it is 0.
+	- welcome:	this is a welcome message that is
+			sent as an announcement to a user
+			as soon as she/he joins the conference
+			room. This of course is not the default
+			behavior of the library, and is only
+			there to show the single announcement
+			feature.
+	- address:	this is the address the MSRP library will
+			use to build the switch's MSRP path.
+	- port:		this is the port number the switch will
+			bind to and listen on as a server.
+			If set to 0, a random port number will be
+			chosen by the library. Once the switch
+			binds to the port, this port is used to
+			build the conference MSRP path.
+
+A typical example to try the application is to have two or more
+endpoints talking to each other on the same chat room. Setup 
+different configuration files for the endpoints as described
+previously. They will need to be setup as active, of course,
+since the switch will be the server. Then prepare a configuration
+file for the switch and launch it:
+
+	./switchmsrp switch.conf
+
+with switch.conf:
+
+	debug=0
+	welcome=Welcome to this sample MSRP conference
+	address=127.0.0.1
+	port=0
+
+After launched, a menu with several options will appear.
+Use the "Add User" voice to add endpoints to the conference,
+by following the same guidelines of the previous section:
+in this scenario, all endpoints will have the same endpoint
+(the switch) as server peer (which before was Alice).
+
+Have a look at the code to see how an MSRP conference room
+service can be accomplished using the library.
